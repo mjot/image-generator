@@ -14,8 +14,15 @@
             "NicoVerbruggen\\ImageGenerator\\": "src/"
         }
     },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/fbett/gd-text"
+        }
+    ],
     "require": {
         "php": ">=8.0",
-        "ext-gd" : ">=8.0"
+        "ext-gd" : ">=8.0",
+        "stil/gd-text": "dev-master"
     }
 }

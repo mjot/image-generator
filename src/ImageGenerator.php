@@ -5,6 +5,8 @@ namespace NicoVerbruggen\ImageGenerator;
 
 use NicoVerbruggen\ImageGenerator\Converters\HexConverter;
 use NicoVerbruggen\ImageGenerator\Helpers\ColorHelper;
+use GDText\Box;
+use GDText\Color;
 
 class ImageGenerator
 {
@@ -22,7 +24,8 @@ class ImageGenerator
         public $backgroundColorHex = "#EEE",
         public $fontPath = null,
         public $fontSize = 12,
-        public $fallbackFontSize = 5
+        public $fallbackFontSize = 5,
+        public $grid = false
     ) {}
 
     /**
@@ -59,23 +62,22 @@ class ImageGenerator
         $dimensions = explode('x', $targetSize);
 
         // Generate an image resource with GD
-        $imageResource = imagecreate($dimensions[0], $dimensions[1]);
+        $imageResource = imagecreatetruecolor($dimensions[0], $dimensions[1]);
 
-        if ($bgHex == null) {
-            $bgHex = $this->backgroundColorHex;
-        }
-        if ($fgHex == null) {
-            $fgHex = $this->textColorHex;
-        }
-
-        $randomColor = ColorHelper::randomHex();
+        $bgHex = $bgHex ?? $this->backgroundColorHex;
+        $fgHex = $fgHex ?? $this->textColorHex;
 
         // Determine which background + foreground (text) color needs to be used
-        $bgColor = ! empty($bgHex) ? $bgHex : $randomColor;
-        $fgColor = ! empty($fgHex) ? $fgHex : ColorHelper::contrastColor($bgHex);
+        $bgColor = !empty($bgHex) ? $bgHex : ColorHelper::randomHex();
+        $fgColor = !empty($fgHex) ? $fgHex : ColorHelper::contrastColor($bgHex);
+
+        $allocatedBgColor = HexConverter::allocate($imageResource, $bgColor);
+        imagefill($imageResource, 0, 0, $allocatedBgColor);
 
         if ($text == "") {
             $text = $targetSize;
+        } else {
+            $text = $text . "\n" . $targetSize;
         }
 
         // Merely allocating the color is enough for the background
@@ -84,70 +86,63 @@ class ImageGenerator
         // We'll need to use the foreground color later, so assign it to a variable
         $allocatedFgColor = HexConverter::allocate($imageResource, $fgColor);
 
+        // Check if grid is enabled
+        if (is_array($this->grid)) {
+
+            // Extract grid configuration or set defaults
+            $gridColor = $this->grid['color'] ?? $this->textColorHex; // Default grid color
+            $gridSpacingX = $this->grid['spacingX'] ?? 100; // Default horizontal spacing
+            $gridSpacingY = $this->grid['spacingY'] ?? 100; // Default vertical spacing
+
+            $allocatedGridColor = HexConverter::allocate($imageResource, $gridColor);
+
+            // Draw horizontal grid lines
+            for ($y = 0; $y < $dimensions[1]; $y += $gridSpacingY) {
+                imageline($imageResource, 0, $y, $dimensions[0], $y, $allocatedGridColor);
+            }
+
+            // Draw vertical grid lines
+            for ($x = 0; $x < $dimensions[0]; $x += $gridSpacingX) {
+                imageline($imageResource, $x, 0, $x, $dimensions[1], $allocatedGridColor);
+            }
+        }
+
         if ($this->fontPath !== null && file_exists($this->fontPath)) {
             // Use the TrueType font that was referenced.
             // Generate text
-            $font = $this->fontPath;
-            $size = $this->fontSize;
-
-            // Get Bounding Box Size
-            $textBox = imagettfbbox($size, 0, $font, $text);
-
-            // Find the outer X and Y values (min and max) and use them to calculate
-            // just how wide and high the text box is!
-            $xMax = max([$textBox[0], $textBox[2], $textBox[4], $textBox[6]]);
-            $xMin = min([$textBox[0], $textBox[2], $textBox[4], $textBox[6]]);
-            $textWidth = abs($xMax) - abs($xMin);
-
-            $yMax = max([$textBox[1], $textBox[3], $textBox[5], $textBox[7]]);
-            $yMin = min([$textBox[1], $textBox[3], $textBox[5], $textBox[7]]);
-            $textHeight = abs($yMax) - abs($yMin);
-
-            // Calculate coordinates of the text
-            $x = ((imagesx($imageResource) / 2) - ($textWidth / 2));
-            $y = ((imagesy($imageResource) / 2) - ($textHeight / 2));
-
-            imagettftext(
-                $imageResource,
-                $size,
-                0,
-                (int) $x,
-                (int) $y,
-                $allocatedFgColor,
-                $font,
-                $text
-            );
+            // Using GDText\Box replaces the need for imagettftext() for enhanced text positioning and styling
+            $box = new Box($imageResource);
+            $box->setFontFace($this->fontPath);
+            $box->setFontColor(new Color($allocatedFgColor));
+            $box->setFontSize($this->fontSize);
+            $box->setBox(0, 0, $dimensions[0], $dimensions[1]);
+            $box->setTextAlign('center', 'center');
+            $box->draw($text);
         } else {
-            // The fallback font will be used!
-            // Determine the size of the font and the expected size of the text that will be rendered.
-            $fontSize = $this->fallbackFontSize;
-            $fontWidth  = imagefontwidth($fontSize);
-            $fontHeight = imagefontwidth($fontSize);
-            $length = strlen($text);
-            $textWidth = $length * $fontWidth;
+            // Use GD's built-in font for fallback
+            $allocatedBgColor = HexConverter::allocate($imageResource, $bgColor);
+            imagefill($imageResource, 0, 0, $allocatedBgColor);
+            $allocatedFgColor = HexConverter::allocate($imageResource, $fgColor);
 
-            // Center the text in the image
-            $x = (imagesx($imageResource) - $textWidth) / 2;
-            $y = (imagesy($imageResource) - $fontHeight) / 2;
+            // Calculate text alignment for GD's built-in font
+            $textWidth = imagefontwidth($this->fallbackFontSize) * strlen($text);
+            $textHeight = imagefontheight($this->fallbackFontSize);
+            $x = ($dimensions[0] - $textWidth) / 2;
+            $y = ($dimensions[1] - $textHeight) / 2;
 
-            // Adds the plain text string to the image
-            imagestring(
-                $imageResource,
-                $fontSize,
-                (int) $x,
-                (int) $y,
-                $text,
-                $allocatedFgColor
-            );
+            // Adjusting for deprecation: Explicitly cast $x and $y to integers
+            imagestring($imageResource, $this->fallbackFontSize, (int)$x, (int)$y, $text, $allocatedFgColor);
         }
 
         // Render image
         if ($path == null) {
             header('Content-type: image/png');
             echo imagepng($imageResource, null);
+            imagedestroy($imageResource);
             exit;
         } else {
             imagepng($imageResource, $path);
+            imagedestroy($imageResource);
             return true;
         }
     }
