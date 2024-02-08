@@ -17,7 +17,7 @@
     "repositories": [
         {
             "type": "vcs",
-            "url": "https://github.com/fbett/gd-text"
+            "url": "https://github.com/mjot/gd-text"
         }
     ],
     "require": {
