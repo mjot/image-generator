@@ -20,6 +20,8 @@
             "url": "https://github.com/mjot/gd-text"
         }
     ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
     "require": {
         "php": ">=8.0",
         "ext-gd" : ">=8.0",
