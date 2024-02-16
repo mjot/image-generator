@@ -75,9 +75,9 @@ class ImageGenerator
         imagefill($imageResource, 0, 0, $allocatedBgColor);
 
         if ($text == "") {
-            $text = $targetSize;
+            $texttouse = $targetSize;
         } else {
-            $text = $text . "\n" . $targetSize;
+            $texttouse = $text . "\n" . $targetSize;
         }
 
         // Merely allocating the color is enough for the background
@@ -117,7 +117,7 @@ class ImageGenerator
             $box->setFontSize($this->fontSize);
             $box->setBox(0, 0, $dimensions[0], $dimensions[1]);
             $box->setTextAlign('center', 'center');
-            $box->draw($text);
+            $box->draw($texttouse);
         } else {
             // Use GD's built-in font for fallback
             $allocatedBgColor = HexConverter::allocate($imageResource, $bgColor);
@@ -125,18 +125,23 @@ class ImageGenerator
             $allocatedFgColor = HexConverter::allocate($imageResource, $fgColor);
 
             // Calculate text alignment for GD's built-in font
-            $textWidth = imagefontwidth($this->fallbackFontSize) * strlen($text);
+            $textWidth = imagefontwidth($this->fallbackFontSize) * strlen($texttouse);
             $textHeight = imagefontheight($this->fallbackFontSize);
             $x = ($dimensions[0] - $textWidth) / 2;
             $y = ($dimensions[1] - $textHeight) / 2;
 
             // Adjusting for deprecation: Explicitly cast $x and $y to integers
-            imagestring($imageResource, $this->fallbackFontSize, (int)$x, (int)$y, $text, $allocatedFgColor);
+            imagestring($imageResource, $this->fallbackFontSize, (int)$x, (int)$y, $texttouse, $allocatedFgColor);
         }
 
-        // Render image
+        // Render image with name based on the target size
         if ($path == null) {
+
+            $filename = !empty($text) ? preg_replace('/[^a-z0-9]/i', '_', $text) . '-' . $targetSize : $targetSize;
+
             header('Content-type: image/png');
+            header('Content-Disposition: inline; filename="'. $filename .'.png"');
+
             echo imagepng($imageResource, null);
             imagedestroy($imageResource);
             exit;
